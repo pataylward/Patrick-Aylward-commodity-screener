@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Institutional Commodity Terminal</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-main: #0B0E11;
+            --bg-card: #151A20;
+            --border-color: #262F38;
+            --text-main: #EAECEF;
+            --text-muted: #848E9C;
+            --accent-red: #F6465D;
+            --accent-green: #0ECB81;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background-color: var(--bg-main); 
+            margin: 0; 
+            padding: 30px; 
+            color: var(--text-main); 
+        }
+
+        .dashboard { max-width: 1300px; margin: 0 auto; }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 25px;
+        }
+
+        h1 { font-size: 22px; font-weight: 600; letter-spacing: -0.5px; margin: 0; }
+        
+        select { 
+            padding: 10px 16px; font-size: 14px; font-weight: 500; border-radius: 6px; 
+            border: 1px solid var(--border-color); width: 260px; background-color: var(--bg-card); 
+            color: var(--text-main); outline: none; cursor: pointer;
+        }
+
+        /* Top Institutional Metrics Row */
+        .metrics-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        .metric-title { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .metric-value { font-size: 24px; font-weight: 700; color: var(--text-main); }
+        
+        .main-layout { display: grid; grid-template-columns: 1fr 450px; gap: 25px; }
+        
+        .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 24px; }
+        
+        .chart-container { position: relative; height: 420px; width: 100%; }
+        
+        .thesis-panel { display: flex; flex-direction: column; gap: 20px; }
+        
+        .section-title { font-weight: 600; font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); padding-bottom: 8px; }
+        .section-content { font-size: 14px; color: var(--text-main); line-height: 1.6; white-space: pre-line; }
+        
+        .positive { color: var(--accent-green); }
+        .negative { color: var(--accent-red); }
+    </style>
+</head>
+<body>
+
+<div class="dashboard">
+    <header>
+        <h1 id="asset-name">Commodity Intelligence Terminal</h1>
+        <select id="ticker-select" onchange="fetchDashboardData()">
+            <option value="">-- Select Asset --</option>
+            <option value="URA">Uranium (URA)</option>
+            <option value="LIT">Lithium (LIT)</option>
+            <option value="GC=F">Gold (GC=F)</option>
+            <option value="SI=F">Silver (SI=F)</option>
+            <option value="CL=F">Crude Oil (CL=F)</option>
+            <option value="RIO">Iron Ore (RIO)</option>
+        </select>
+    </header>
+
+    <div class="metrics-row">
+        <div class="metric-card">
+            <div class="metric-title" id="lbl-spot">Live Spot Price</div>
+            <div class="metric-value" id="val-spot">$0.00</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">30-Day Return</div>
+            <div class="metric-value" id="val-return">0.00%</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">30-Day High</div>
+            <div class="metric-value" id="val-high">$0.00</div>
+        </div>
+        <div class="metric-card">
+            <div class="metric-title">30-Day Low</div>
+            <div class="metric-value" id="val-low">$0.00</div>
+        </div>
+    </div>
+
+    <div class="main-layout">
+        <div class="card">
+            <div class="chart-container">
+                <canvas id="myChart"></canvas>
+            </div>
+        </div>
+
+        <div class="thesis-panel">
+            <div class="card">
+                <div class="section-title">A) Analyst Consensus Targets</div>
+                <div class="section-content" id="sec-analysts">Awaiting asset selection...</div>
+            </div>
+            <div class="card">
+                <div class="section-title">B) Structural Macro Drivers</div>
+                <div class="section-content" id="sec-drivers">Awaiting asset selection...</div>
+            </div>
+            <div class="card">
+                <div class="section-title">C) Key Risk Dimensions</div>
+                <div class="section-content" id="sec-risks">Awaiting asset selection...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let myChart = null;
+
+async function fetchDashboardData() {
+    const ticker = document.getElementById('ticker-select').value;
+    if (!ticker) return;
+
+    try {
+        const response = await fetch(`http://127.0.0.1:8000/screener/${ticker}`);
+        const data = await response.json();
+
+        // 1. Map Python text blocks to the HTML sections
+        document.getElementById('asset-name').innerText = data.name;
+        document.getElementById('lbl-spot').innerText = `${data.ticker} SPOT`;
+        document.getElementById('sec-analysts').innerText = data.analyst_view;
+        document.getElementById('sec-drivers').innerText = data.macro_drivers;
+        document.getElementById('sec-risks').innerText = data.key_risks;
+
+        // 2. JavaScript Math Engine: Calculate fundamental metrics from the real prices
+        const currentPrice = data.live_price;
+        const prices = data.chart_prices;
+        const high30 = Math.max(...prices);
+        const low30 = Math.min(...prices);
+        const startPrice = prices[0];
+        const return30 = ((currentPrice - startPrice) / startPrice) * 100;
+
+        // 3. Inject the calculated metrics into the UI Cards
+        document.getElementById('val-spot').innerText = `$${currentPrice.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        document.getElementById('val-high').innerText = `$${high30.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        document.getElementById('val-low').innerText = `$${low30.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        
+        const returnEl = document.getElementById('val-return');
+        returnEl.innerText = `${return30 > 0 ? '+' : ''}${return30.toFixed(2)}%`;
+        returnEl.className = `metric-value ${return30 >= 0 ? 'positive' : 'negative'}`;
+
+        // 4. Determine Graph Color (Green if up on the month, Red if down)
+        const chartColor = return30 >= 0 ? '#0ECB81' : '#F6465D';
+        const chartBg = return30 >= 0 ? 'rgba(14, 203, 129, 0.05)' : 'rgba(246, 70, 93, 0.05)';
+
+        // 5. Render the graph with the EXACT historical data array from your Python backend
+        if (myChart) { myChart.destroy(); }
+        const ctx = document.getElementById('myChart').getContext('2d');
+        
+        myChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.chart_labels, 
+                datasets: [{
+                    data: data.chart_prices, 
+                    borderColor: chartColor,
+                    borderWidth: 2,
+                    pointRadius: 0,
+                    hoverRadius: 6,
+                    fill: true,
+                    backgroundColor: chartBg,
+                    tension: 0.15
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { 
+                    legend: { display: false }, 
+                    tooltip: { mode: 'index', intersect: false } // Adds a crosshair hover effect
+                },
+                scales: {
+                    x: { grid: { display: false }, ticks: { color: '#848E9C', font: { size: 10 }, maxTicksLimit: 8 } },
+                    y: { grid: { color: '#262F38', drawBorder: false }, ticks: { color: '#848E9C', font: { size: 11 } } }
+                },
+                interaction: { mode: 'nearest', axis: 'x', intersect: false }
+            }
+        });
+    } catch (error) {
+        alert("Make sure server.py is actively running in your IDLE shell!");
+    }
+}
+</script>
+
+</body>
+</html>
