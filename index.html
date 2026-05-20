@@ -3,25 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quantitative Macro & Equity Research</title>
+    <title>Your Name - Macro Research</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root { --bg-main: #0B0E11; --bg-card: #151A20; --border: #262F38; --text-main: #EAECEF; --text-muted: #848E9C; --accent: #0ECB81; }
         body { background: var(--bg-main); color: var(--text-main); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 0; line-height: 1.6; }
         
-        /* Portfolio Hero Section */
         .hero { padding: 80px 40px; max-width: 1100px; margin: 0 auto; border-bottom: 1px solid var(--border); }
         .hero h1 { font-size: 42px; margin: 0 0 10px 0; font-weight: 700; letter-spacing: -0.5px; }
         .hero h2 { font-size: 18px; color: var(--accent); margin: 0 0 25px 0; font-weight: 500; letter-spacing: 1px; text-transform: uppercase; }
         .hero p { color: var(--text-muted); font-size: 16px; max-width: 700px; margin-bottom: 20px; }
         
-        /* Terminal Container */
         .terminal-wrapper { padding: 40px; max-width: 1100px; margin: 0 auto; }
         .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
         .header h3 { font-size: 20px; margin: 0; font-weight: 600; }
         select { padding: 10px 15px; background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border); border-radius: 6px; font-size: 14px; outline: none; cursor: pointer; }
         
-        /* Grid Layout */
         .terminal-grid { display: grid; grid-template-columns: 2.5fr 1fr; gap: 25px; }
         .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 24px; }
         .chart-container { height: 500px; width: 100%; }
@@ -38,6 +35,12 @@
         .badge.buy { background: rgba(14, 203, 129, 0.15); color: #0ECB81; border: 1px solid rgba(14, 203, 129, 0.3); }
         .badge.hold { background: rgba(246, 194, 62, 0.15); color: #F6C23E; border: 1px solid rgba(246, 194, 62, 0.3); }
         .badge.sell { background: rgba(246, 70, 93, 0.15); color: #F6465D; border: 1px solid rgba(246, 70, 93, 0.3); }
+
+        /* Loader CSS */
+        #loader { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 100px 0; grid-column: 1 / -1; }
+        .spinner { border: 3px solid rgba(255, 255, 255, 0.05); border-left-color: var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .loader-text { color: var(--text-muted); font-size: 14px; letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
@@ -45,8 +48,8 @@
     <div class="hero">
         <h1>Patrick Aylward</h1>
         <h2>Macro Research & Equity Analysis</h2>
-        <p>Finance & Psychology dual-focus combining behavioural market dynamics with hard quantitative screening. Currently modelling structural supply deficits in energy transition assets.</p>
-        <p>Below is a live Python-backed institutional screener I engineered to track 12-month moving averages, macro drivers, and consensus asymmetric risk-reward profiles.</p>
+        <p>Finance & Psychology dual-focus combining behavioral market dynamics with hard quantitative screening. Currently modeling structural supply deficits in energy transition assets.</p>
+        <p>Below is a live Python-backed institutional screener tracking 12-month moving averages, USD correlations (DXY), institutional volume flows, and consensus risk-reward profiles.</p>
     </div>
 
     <div class="terminal-wrapper">
@@ -62,24 +65,38 @@
             </select>
         </div>
 
-        <div class="terminal-grid">
+        <div id="loader">
+            <div class="spinner"></div>
+            <div class="loader-text" id="loader-msg">Booting Render Cloud Server & Fetching Macro Data... (Up to 50s)</div>
+        </div>
+
+        <div class="terminal-grid" id="data-grid" style="display: none;">
             <div class="card"><div class="chart-container"><canvas id="myChart"></canvas></div></div>
             
             <div class="analysis-panel">
-                <div class="card"><div class="section-title">Analyst Consensus</div><div id="analysts" class="section-content">Loading data...</div></div>
-                <div class="card"><div class="section-title">Macro Drivers</div><div id="drivers" class="section-content">Loading data...</div></div>
-                <div class="card"><div class="section-title">Key Risks</div><div id="risks" class="section-content">Loading data...</div></div>
+                <div class="card"><div class="section-title">Analyst Consensus</div><div id="analysts" class="section-content"></div></div>
+                <div class="card"><div class="section-title">Macro Drivers</div><div id="drivers" class="section-content"></div></div>
+                <div class="card"><div class="section-title">Key Risks</div><div id="risks" class="section-content"></div></div>
             </div>
         </div>
     </div>
 
     <script>
-        // NOTE: Before deploying to GitHub, we will change this URL to your live Render server link!
+        // REPLACE WITH YOUR LIVE RENDER URL
         const API_URL = "https://commodities-screener.onrender.com"; 
         
         let chart = null;
         async function loadTerminal() {
             const ticker = document.getElementById('ticker').value;
+            const loader = document.getElementById('loader');
+            const dataGrid = document.getElementById('data-grid');
+            const loaderMsg = document.getElementById('loader-msg');
+            
+            loader.style.display = 'flex';
+            dataGrid.style.display = 'none';
+            loaderMsg.innerText = "Booting Render Cloud Server & Fetching Macro Data... (Up to 50s)";
+            loaderMsg.style.color = "var(--text-muted)";
+
             try {
                 const res = await fetch(`${API_URL}/screener/${ticker}`);
                 const data = await res.json();
@@ -92,26 +109,38 @@
                 if(chart) chart.destroy();
                 const ctx = document.getElementById('myChart').getContext('2d');
                 chart = new Chart(ctx, {
-                    type: 'line',
                     data: { 
                         labels: data.chart_labels, 
                         datasets: [
-                            { label: 'Monthly Spot Price', data: data.chart_prices, borderColor: '#0ECB81', backgroundColor: 'rgba(14, 203, 129, 0.05)', fill: true, tension: 0.15, pointRadius: 3, hoverRadius: 6 },
-                            { label: '12-Month SMA', data: data.chart_sma, borderColor: '#848E9C', borderDash: [5, 5], tension: 0.15, pointRadius: 0, fill: false }
+                            { type: 'line', label: 'Monthly Spot Price', data: data.chart_prices, yAxisID: 'y', borderColor: '#0ECB81', backgroundColor: 'rgba(14, 203, 129, 0.05)', fill: true, tension: 0.15, pointRadius: 3, hoverRadius: 6, order: 1 },
+                            { type: 'line', label: '12-Month SMA', data: data.chart_sma, yAxisID: 'y', borderColor: '#848E9C', borderDash: [5, 5], tension: 0.15, pointRadius: 0, fill: false, order: 2 },
+                            { type: 'line', label: 'DXY (US Dollar Index)', data: data.chart_dxy, yAxisID: 'y-right', borderColor: '#F6C23E', tension: 0.15, pointRadius: 0, fill: false, order: 3 },
+                            { type: 'bar', label: 'Institutional Volume', data: data.chart_volume, yAxisID: 'y-volume', backgroundColor: 'rgba(132, 142, 156, 0.15)', order: 4 }
                         ]
                     },
                     options: { 
                         responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-                        scales: { x: { grid: { display: false }, ticks: { color: '#848E9C' } }, y: { grid: { color: '#262F38' }, ticks: { color: '#848E9C' } } },
+                        scales: { 
+                            x: { grid: { display: false }, ticks: { color: '#848E9C' } }, 
+                            y: { position: 'left', grid: { color: '#262F38' }, ticks: { color: '#848E9C' } },
+                            'y-right': { position: 'right', grid: { drawOnChartArea: false }, ticks: { color: '#F6C23E' } },
+                            'y-volume': { display: false, min: 0 } 
+                        },
                         plugins: { legend: { labels: { color: '#EAECEF' } } }
                     }
                 });
+
+                loader.style.display = 'none';
+                dataGrid.style.display = 'grid';
+
             } catch (error) {
                 console.error("Connection failed:", error);
-                document.getElementById('analysts').innerHTML = "<strong>System Offline:</strong> The backend API is currently sleeping. Please try again in 60 seconds.";
+                loaderMsg.innerHTML = "<strong>System Offline:</strong> The backend API failed to wake up. Please verify your Render URL.";
+                loaderMsg.style.color = "#F6465D";
             }
         }
         loadTerminal();
     </script>
 </body>
 </html>
+
