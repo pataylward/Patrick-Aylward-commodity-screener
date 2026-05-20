@@ -40,20 +40,18 @@ def initialize_database():
         cursor = conn.cursor()
         if DB_URL:
             cursor.execute("CREATE TABLE IF NOT EXISTS research (ticker VARCHAR PRIMARY KEY, name VARCHAR, analysts TEXT, drivers TEXT, risks TEXT, chart_data TEXT)")
-            # Migration: add chart_data column if upgrading from old schema
             try:
                 cursor.execute("ALTER TABLE research ADD COLUMN chart_data TEXT DEFAULT '{}'")
                 conn.commit()
             except:
-                pass  # Column already exists, safe to ignore
+                pass
         else:
             cursor.execute("CREATE TABLE IF NOT EXISTS research (ticker TEXT PRIMARY KEY, name TEXT, analysts TEXT, drivers TEXT, risks TEXT, chart_data TEXT)")
-            # Migration: add chart_data column if upgrading from old schema
             try:
                 cursor.execute("ALTER TABLE research ADD COLUMN chart_data TEXT DEFAULT '{}'")
                 conn.commit()
             except:
-                pass  # Column already exists, safe to ignore
+                pass
 
         initial_data = [
             ("URA", "Uranium (Global X ETF)", 
@@ -83,7 +81,7 @@ def initialize_database():
             ("CL=F", "Crude Oil Futures", 
              "<span class='badge hold'>NEUTRAL</span> <br><br><ul><li><strong>Consensus Target:</strong> Forward curves suggest range-bound, sideways trading for the next two quarters.</li><li><strong>Institutional Positioning:</strong> Algorithmic trend-followers are heavily dictating near-term momentum swings.</li><li><strong>Structural Outlook:</strong> Supply balances are tipping back to equilibrium, making the market heavily dependent on OPEC+ policy.</li></ul>", 
              "<ul><li><strong>Geopolitical Chokepoints:</strong> Elevated transit restrictions and risks across critical global marine shipping routes.</li><li><strong>OPEC+ Discipline:</strong> Extended cartel production quota restrictions continue to artificially tighten the physical market.</li><li><strong>SPR Replenishment:</strong> Strategic reserve purchases by sovereign governments are creating a soft floor underneath spot prices.</li></ul>", 
-             "<ul><li><strong>Demand Destruction:</strong> Systemic global economic slowing threatens to severely cut commercial shipping and manufacturing utilisation.</li><li><strong>Electrification:</strong> Accelerating consumer EV adoption curves are permanently denting long-term gasoline demand forecasts.</li><li><strong>Non-OPEC Supply:</strong> Record-breaking production output from the US, Brazil, and Guyana threatens to flood the market.</li></ul>", 
+             "<ul><li><strong>Demand Destruction:</strong> Systemic global economic slowing threatens to severely cut commercial shipping and manufacturing utilization.</li><li><strong>Electrification:</strong> Accelerating consumer EV adoption curves are permanently denting long-term gasoline demand forecasts.</li><li><strong>Non-OPEC Supply:</strong> Record-breaking production output from the US, Brazil, and Guyana threatens to flood the market.</li></ul>", 
              "{}"),
 
             ("RIO", "Iron Ore (Rio Tinto)", 
@@ -111,13 +109,22 @@ def refresh_market_data():
     with get_db() as conn:
         cursor = conn.cursor()
         placeholder = "%s" if DB_URL else "?"
+        
+        # Bulletproof DXY Fetch with UUP Fallback
         try:
             dxy_asset = yf.Ticker("DX-Y.NYB")
             dxy_df = dxy_asset.history(period="5y", interval="1mo").tail(24)
+            if dxy_df.empty:
+                raise ValueError("Empty data")
             dxy_prices = [round(x, 2) for x in dxy_df['Close'].tolist()]
         except Exception as e:
-            print(f"[DXY] Failed: {e}")
-            dxy_prices = []
+            print(f"[DXY] Main ticker failed, trying backup (UUP)...")
+            try:
+                dxy_asset = yf.Ticker("UUP")
+                dxy_df = dxy_asset.history(period="5y", interval="1mo").tail(24)
+                dxy_prices = [round(x, 2) for x in dxy_df['Close'].tolist()]
+            except:
+                dxy_prices = []
 
         for ticker in tickers:
             try:
