@@ -7,12 +7,13 @@ import pandas as pd
 import json
 import math
 import os
+import threading
 from contextlib import contextmanager
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# Cloud Database detection 
+# Cloud Database detection
 DB_URL = os.environ.get("DATABASE_URL")
 if DB_URL and DB_URL.startswith("postgres://"):
     DB_URL = DB_URL.replace("postgres://", "postgresql://", 1)
@@ -39,10 +40,20 @@ def initialize_database():
         cursor = conn.cursor()
         if DB_URL:
             cursor.execute("CREATE TABLE IF NOT EXISTS research (ticker VARCHAR PRIMARY KEY, name VARCHAR, analysts TEXT, drivers TEXT, risks TEXT, chart_data TEXT)")
-            placeholder = "%s"
+            # Migration: add chart_data column if upgrading from old schema
+            try:
+                cursor.execute("ALTER TABLE research ADD COLUMN chart_data TEXT DEFAULT '{}'")
+                conn.commit()
+            except:
+                pass  # Column already exists, safe to ignore
         else:
             cursor.execute("CREATE TABLE IF NOT EXISTS research (ticker TEXT PRIMARY KEY, name TEXT, analysts TEXT, drivers TEXT, risks TEXT, chart_data TEXT)")
-            placeholder = "?"
+            # Migration: add chart_data column if upgrading from old schema
+            try:
+                cursor.execute("ALTER TABLE research ADD COLUMN chart_data TEXT DEFAULT '{}'")
+                conn.commit()
+            except:
+                pass  # Column already exists, safe to ignore
 
         initial_data = [
             ("URA", "Uranium (Global X ETF)", "<span class='badge buy'>OVERWEIGHT</span> <br><br>Consensus 12-mo PT implies 25% upside. Institutional desks note that structural supply deficits are now irreversible through 2030, driven by Western utility contracting cycles.", "<ul><li><strong>Supply Bifurcation:</strong> Western utilities aggressively shifting away from Rosatom enrichment.</li><li><strong>SMR Adoption:</strong> Small Modular Reactors moving from conceptual to regulatory approval.</li><li><strong>Mine Restarts:</strong> Prolonged lag time in bringing Tier 2 mines back online restricts spot supply.</li></ul>", "<ul><li><strong>Policy Volatility:</strong> Heavy reliance on favorable government subsidies and grid policy.</li><li><strong>Kazatomprom Misses:</strong> Unexpected production increases from the world's largest producer could crush spot prices.</li></ul>", "{}"),
@@ -52,12 +63,22 @@ def initialize_database():
             ("CL=F", "Crude Oil Futures", "<span class='badge hold'>NEUTRAL</span> <br><br>High near-term volatility tied to transit bottlenecks. Long-term consensus curves flatten as structural supply balances tip back to equilibrium.", "<ul><li><strong>Geopolitical Chokepoints:</strong> Elevated transit restrictions across critical marine routes.</li><li><strong>OPEC+ Discipline:</strong> Extended cartel production quota restrictions.</li></ul>", "<ul><li><strong>Demand Destruction:</strong> Systemic global recessions cutting shipping and manufacturing utilization.</li><li><strong>Electrification:</strong> Accelerating consumer EV adoption curves denting gasoline demand.</li></ul>", "{}"),
             ("RIO", "Iron Ore (Rio Tinto)", "<span class='badge sell'>UNDERWEIGHT</span> <br><br>Industrial metal analysts remain broadly conservative. Consensus projections target a narrow price bandwidth, heavily dependent on state-level infrastructure allocations.", "<ul><li><strong>Emerging Market Buildouts:</strong> Aggressive developments across India and Southeast Asia.</li><li><strong>Green Steel:</strong> Increasing structural demand for high-grade pellets.</li></ul>", "<ul><li><strong>Real Estate Contractions:</strong> Multi-year consolidation within commercial real estate markets.</li><li><strong>Supply Flooding:</strong> Expansion completions in South America and Africa coming online.</li></ul>", "{}")
         ]
-        
+
         for row in initial_data:
             try:
-                cursor.execute(f"INSERT INTO research VALUES ({placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}, {placeholder}) ON CONFLICT DO NOTHING", row)
-            except:
-                pass 
+                # FIX 1: Use correct INSERT syntax for each DB engine
+                if DB_URL:
+                    cursor.execute(
+                        "INSERT INTO research VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                        row
+                    )
+                else:
+                    cursor.execute(
+                        "INSERT OR IGNORE INTO research VALUES (?, ?, ?, ?, ?, ?)",
+                        row
+                    )
+            except Exception as e:
+                print(f"[DB Init] Insert failed for {row[0]}: {e}")
         conn.commit()
 
 def refresh_market_data():
@@ -70,18 +91,31 @@ def refresh_market_data():
             dxy_asset = yf.Ticker("DX-Y.NYB")
             dxy_df = dxy_asset.history(period="5y", interval="1mo").tail(24)
             dxy_prices = [round(x, 2) for x in dxy_df['Close'].tolist()]
-        except: dxy_prices = []
+        except Exception as e:
+            print(f"[DXY] Failed: {e}")
+            dxy_prices = []
 
         for ticker in tickers:
             try:
                 asset = yf.Ticker(ticker)
-                df = asset.history(period="5y", interval="1mo") 
-                if df.index.tz is not None: df.index = df.index.tz_localize(None)
+                df = asset.history(period="5y", interval="1mo")
+                if df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
                 df['SMA_12'] = df['Close'].rolling(window=12).mean()
-                df_display = df.tail(24) 
-                data_payload = {"prices": [round(x, 2) for x in df_display['Close'].tolist()], "sma": [round(x, 2) if not math.isnan(x) else None for x in df_display['SMA_12'].tolist()], "volume": [int(x) for x in df_display['Volume'].tolist()], "dxy": dxy_prices, "labels": [date.strftime('%b %Y') for date in df_display.index]}
-                cursor.execute(f"UPDATE research SET chart_data = {placeholder} WHERE ticker = {placeholder}", (json.dumps(data_payload), ticker))
+                df_display = df.tail(24)
+                data_payload = {
+                    "prices": [round(x, 2) for x in df_display['Close'].tolist()],
+                    "sma": [round(x, 2) if not math.isnan(x) else None for x in df_display['SMA_12'].tolist()],
+                    "volume": [int(x) for x in df_display['Volume'].tolist()],
+                    "dxy": dxy_prices,
+                    "labels": [date.strftime('%b %Y') for date in df_display.index]
+                }
+                cursor.execute(
+                    f"UPDATE research SET chart_data = {placeholder} WHERE ticker = {placeholder}",
+                    (json.dumps(data_payload), ticker)
+                )
                 conn.commit()
+                print(f"[{ticker}] Updated successfully.")
             except Exception as e:
                 print(f"[{ticker}] Failed: {e}")
 
@@ -94,7 +128,8 @@ def get_admin_data(ticker: str):
         placeholder = "%s" if DB_URL else "?"
         cursor.execute(f"SELECT analysts, drivers, risks FROM research WHERE ticker = {placeholder}", (ticker,))
         row = cursor.fetchone()
-    if row: return {"analysts": row[0], "drivers": row[1], "risks": row[2]}
+    if row:
+        return {"analysts": row[0], "drivers": row[1], "risks": row[2]}
     raise HTTPException(status_code=404, detail="Ticker not found")
 
 @app.post("/admin/update")
@@ -102,8 +137,10 @@ def update_research(data: ResearchUpdate):
     with get_db() as conn:
         cursor = conn.cursor()
         placeholder = "%s" if DB_URL else "?"
-        cursor.execute(f"UPDATE research SET analysts = {placeholder}, drivers = {placeholder}, risks = {placeholder} WHERE ticker = {placeholder}", 
-                       (data.analysts, data.drivers, data.risks, data.ticker))
+        cursor.execute(
+            f"UPDATE research SET analysts = {placeholder}, drivers = {placeholder}, risks = {placeholder} WHERE ticker = {placeholder}",
+            (data.analysts, data.drivers, data.risks, data.ticker)
+        )
         conn.commit()
     return {"status": "success"}
 
@@ -114,23 +151,42 @@ def get_commodity_data(ticker: str):
     with get_db() as conn:
         cursor = conn.cursor()
         placeholder = "%s" if DB_URL else "?"
-        cursor.execute(f"SELECT name, analysts, drivers, risks, chart_data FROM research WHERE ticker = {placeholder}", (ticker,))
+        cursor.execute(
+            f"SELECT name, analysts, drivers, risks, chart_data FROM research WHERE ticker = {placeholder}",
+            (ticker,)
+        )
         row = cursor.fetchone()
     if row:
         name, analysts, drivers, risks, chart_data_str = row
-        try: chart_data = json.loads(chart_data_str)
-        except: chart_data = {"prices": [], "sma": [], "volume": [], "dxy": [], "labels": []}
-        return {"name": name, "analysts": analysts, "drivers": drivers, "risks": risks, "chart_prices": chart_data.get("prices", []), "chart_sma": chart_data.get("sma", []), "chart_volume": chart_data.get("volume", []), "chart_dxy": chart_data.get("dxy", []), "chart_labels": chart_data.get("labels", [])}
+        try:
+            chart_data = json.loads(chart_data_str)
+        except:
+            chart_data = {"prices": [], "sma": [], "volume": [], "dxy": [], "labels": []}
+        return {
+            "name": name,
+            "analysts": analysts,
+            "drivers": drivers,
+            "risks": risks,
+            "chart_prices": chart_data.get("prices", []),
+            "chart_sma": chart_data.get("sma", []),
+            "chart_volume": chart_data.get("volume", []),
+            "chart_dxy": chart_data.get("dxy", []),
+            "chart_labels": chart_data.get("labels", [])
+        }
     return {"error": "Ticker not found"}
 
 @app.on_event("startup")
 def start_scheduler():
     initialize_database()
-    refresh_market_data()
+    # FIX 2: Run initial data refresh in background so server boots instantly
+    # (avoids Render health check timeout caused by slow yfinance calls)
+    threading.Thread(target=refresh_market_data, daemon=True).start()
     scheduler = BackgroundScheduler()
     scheduler.add_job(refresh_market_data, 'interval', hours=12)
     scheduler.start()
 
+# FIX 3: Bind to 0.0.0.0 so Render can reach the server
+# Start command on Render should be: uvicorn server:app --host 0.0.0.0 --port $PORT
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
