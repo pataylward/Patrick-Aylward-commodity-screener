@@ -2,3 +2,5 @@ fastapi
 uvicorn
 yfinance
 pandas
+apscheduler
+psycopg2-binary
