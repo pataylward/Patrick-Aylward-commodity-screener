@@ -55,7 +55,7 @@ def initialize_database():
             except:
                 pass  # Column already exists, safe to ignore
 
-        initial_data = initial_data = [
+        initial_data = [
             ("URA", "Uranium (Global X ETF)", 
              "<span class='badge buy'>OVERWEIGHT</span> <br><br><ul><li><strong>Consensus Target:</strong> Base case 12-month price targets imply a 25% upside from current consolidation levels.</li><li><strong>Institutional Positioning:</strong> Institutional desks note that structural supply deficits are now mathematically irreversible through 2030.</li><li><strong>Structural Outlook:</strong> Aggressive Western utility contracting cycles are driving unprecedented strength in the term market.</li></ul>", 
              "<ul><li><strong>Tech Giant Demand:</strong> Hyperscalers (Amazon, Microsoft) are signing massive nuclear power purchase agreements to fuel AI data centers.</li><li><strong>Supply Bifurcation:</strong> Western utilities are aggressively, and permanently, shifting their supply chains away from Russian enrichment.</li><li><strong>SMR Adoption:</strong> Small Modular Reactors are rapidly moving past conceptual design and securing massive regulatory approval and funding.</li></ul>", 
