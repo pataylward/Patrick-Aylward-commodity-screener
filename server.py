@@ -93,7 +93,7 @@ def initialize_database():
              "{}")
         ]
 
-for row in initial_data:
+        for row in initial_data:
             try:
                 if DB_URL:
                     cursor.execute("INSERT INTO research VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING", row)
@@ -202,15 +202,11 @@ def get_commodity_data(ticker: str):
 @app.on_event("startup")
 def start_scheduler():
     initialize_database()
-    # FIX 2: Run initial data refresh in background so server boots instantly
-    # (avoids Render health check timeout caused by slow yfinance calls)
     threading.Thread(target=refresh_market_data, daemon=True).start()
     scheduler = BackgroundScheduler()
     scheduler.add_job(refresh_market_data, 'interval', hours=12)
     scheduler.start()
 
-# FIX 3: Bind to 0.0.0.0 so Render can reach the server
-# Start command on Render should be: uvicorn server:app --host 0.0.0.0 --port $PORT
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
