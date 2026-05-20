@@ -93,21 +93,16 @@ def initialize_database():
              "{}")
         ]
 
-        for row in initial_data:
+for row in initial_data:
             try:
-                # FIX 1: Use correct INSERT syntax for each DB engine
                 if DB_URL:
-                    cursor.execute(
-                        "INSERT INTO research VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING",
-                        row
-                    )
+                    cursor.execute("INSERT INTO research VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT DO NOTHING", row)
+                    cursor.execute("UPDATE research SET analysts = %s, drivers = %s, risks = %s WHERE ticker = %s", (row[2], row[3], row[4], row[0]))
                 else:
-                    cursor.execute(
-                        "INSERT OR IGNORE INTO research VALUES (?, ?, ?, ?, ?, ?)",
-                        row
-                    )
+                    cursor.execute("INSERT OR IGNORE INTO research VALUES (?, ?, ?, ?, ?, ?)", row)
+                    cursor.execute("UPDATE research SET analysts = ?, drivers = ?, risks = ? WHERE ticker = ?", (row[2], row[3], row[4], row[0]))
             except Exception as e:
-                print(f"[DB Init] Insert failed for {row[0]}: {e}")
+                print(f"[DB Init] Insert/Update failed for {row[0]}: {e}")
         conn.commit()
 
 def refresh_market_data():
